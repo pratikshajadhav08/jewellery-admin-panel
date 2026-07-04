@@ -8,23 +8,28 @@ import { getReactNativePersistence } from 'firebase/auth';
 import { Firestore, getFirestore } from 'firebase/firestore';
 import { Platform } from 'react-native';
 
+const FIREBASE_API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+const FIREBASE_AUTH_DOMAIN = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN;
+const FIREBASE_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
+const FIREBASE_STORAGE_BUCKET = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
+const FIREBASE_MESSAGING_SENDER_ID = process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID;
+const FIREBASE_APP_ID = process.env.EXPO_PUBLIC_FIREBASE_APP_ID;
+
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  apiKey: FIREBASE_API_KEY,
+  authDomain: FIREBASE_AUTH_DOMAIN,
+  projectId: FIREBASE_PROJECT_ID,
+  storageBucket: FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
+  appId: FIREBASE_APP_ID,
 };
 
-const requiredKeys = [
-  'EXPO_PUBLIC_FIREBASE_API_KEY',
-  'EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN',
-  'EXPO_PUBLIC_FIREBASE_PROJECT_ID',
-  'EXPO_PUBLIC_FIREBASE_APP_ID',
-] as const;
-
-const missingKeys = requiredKeys.filter((key) => !process.env[key]);
+const missingKeys = [
+  !FIREBASE_API_KEY && 'EXPO_PUBLIC_FIREBASE_API_KEY',
+  !FIREBASE_AUTH_DOMAIN && 'EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN',
+  !FIREBASE_PROJECT_ID && 'EXPO_PUBLIC_FIREBASE_PROJECT_ID',
+  !FIREBASE_APP_ID && 'EXPO_PUBLIC_FIREBASE_APP_ID',
+].filter(Boolean) as string[];
 
 export const firebaseConfigError =
   missingKeys.length > 0
