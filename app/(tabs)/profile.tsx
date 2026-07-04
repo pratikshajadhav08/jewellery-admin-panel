@@ -1,11 +1,12 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppColors, fonts, layout, makeShadow, radius, spacing } from '../../constants/theme';
-import { admin } from '../../data/dummyData';
+import { useAdmin, updateAdmin } from '../../lib/firestore/meta';
 import { useAppTheme } from '../../hooks/use-app-theme';
+import { useAuthUser, signOutAdmin } from '../../lib/auth';
 
 const MENU: { icon: keyof typeof Feather.glyphMap; label: string }[] = [
   { icon: 'shopping-bag', label: 'Store Settings' },
@@ -19,6 +20,74 @@ export default function Profile() {
   const { colors, isDark, toggleTheme } = useAppTheme();
   const styles = createStyles(colors);
   const [notifications, setNotifications] = useState(true);
+  const { user } = useAuthUser();
+  const { admin, loading } = useAdmin();
+
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+  const [store, setStore] = useState('');
+
+  // Sync local edit fields whenever the live profile changes (and isn't
+  // mid-edit), so external updates don't get clobbered by stale state.
+  useEffect(() => {
+    if (admin && !editMode) {
+      setName(admin.name);
+      setRole(admin.role);
+      setStore(admin.store);
+    }
+  }, [admin, editMode]);
+
+  const handleLogout = async () => {
+    try {
+      await signOutAdmin();
+    } catch (error) {
+      Alert.alert('Could not sign out', error instanceof Error ? error.message : 'Please try again.');
+      return;
+    }
+    router.replace('/login');
+  };
+
+  const handleSave = async () => {
+    if (!user) return;
+    if (!name.trim()) {
+      Alert.alert('Missing info', 'Username cannot be empty.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const initials = name
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+      await updateAdmin(user.uid, {
+        name: name.trim(),
+        role: role.trim() || 'Administrator',
+        store: store.trim() || 'Aurelia Fine Jewellery',
+        avatarInitials: initials || 'A',
+        email: admin?.email ?? user.email ?? '',
+      });
+      setEditMode(false);
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !admin) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={colors.gold} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -30,12 +99,55 @@ export default function Profile() {
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{admin.avatarInitials}</Text>
             </View>
-            <Text style={styles.name}>{admin.name}</Text>
-            <Text style={styles.role}>{admin.role}</Text>
+
+            {editMode ? (
+              <>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Username"
+                  placeholderTextColor={colors.ivoryFaint}
+                  style={styles.nameInput}
+                />
+                <TextInput
+                  value={role}
+                  onChangeText={setRole}
+                  placeholder="Role (e.g. Store Manager)"
+                  placeholderTextColor={colors.ivoryFaint}
+                  style={styles.roleInput}
+                />
+                <TextInput
+                  value={store}
+                  onChangeText={setStore}
+                  placeholder="Store name"
+                  placeholderTextColor={colors.ivoryFaint}
+                  style={styles.roleInput}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.name}>{admin.name}</Text>
+                <Text style={styles.role}>{admin.role}</Text>
+              </>
+            )}
+
+            {/* Email is tied to the sign-in account, so it's shown small and
+                separate from the username rather than as the main identity. */}
             <Text style={styles.email}>{admin.email}</Text>
-            <Pressable style={styles.editBtn}>
-              <Feather name="edit-2" size={13} color={colors.gold} />
-              <Text style={styles.editText}>Edit Profile</Text>
+
+            <Pressable
+              style={styles.editBtn}
+              onPress={() => (editMode ? handleSave() : setEditMode(true))}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color={colors.gold} />
+              ) : (
+                <>
+                  <Feather name={editMode ? 'check' : 'edit-2'} size={13} color={colors.gold} />
+                  <Text style={styles.editText}>{editMode ? 'Save' : 'Edit Profile'}</Text>
+                </>
+              )}
             </Pressable>
           </View>
 
@@ -88,7 +200,7 @@ export default function Profile() {
             ))}
           </View>
 
-          <Pressable style={styles.logout} onPress={() => router.replace('/login')}>
+          <Pressable style={styles.logout} onPress={handleLogout}>
             <Feather name="log-out" size={16} color={colors.danger} />
             <Text style={styles.logoutText}>Log Out</Text>
           </Pressable>
@@ -102,6 +214,7 @@ export default function Profile() {
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   inner: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center' },
   title: { fontFamily: fonts.display, fontSize: 28, color: colors.ivory, paddingVertical: spacing.lg },
@@ -115,8 +228,16 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
   avatarText: { fontFamily: fonts.display, fontSize: 22, color: colors.goldSoft },
   name: { fontFamily: fonts.displaySemi, fontSize: 19, color: colors.ivory },
+  nameInput: {
+    fontFamily: fonts.displaySemi, fontSize: 17, color: colors.ivory, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.sm, padding: spacing.sm, backgroundColor: colors.bgElevated, minWidth: 220, textAlign: 'center', marginBottom: 6,
+  },
   role: { fontFamily: fonts.body, fontSize: 12.5, color: colors.gold, marginTop: 3 },
-  email: { fontFamily: fonts.body, fontSize: 12, color: colors.ivoryMuted, marginTop: 6 },
+  roleInput: {
+    fontFamily: fonts.body, fontSize: 12.5, color: colors.gold, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.sm, padding: 8, backgroundColor: colors.bgElevated, minWidth: 220, textAlign: 'center', marginBottom: 6,
+  },
+  email: { fontFamily: fonts.body, fontSize: 11.5, color: colors.ivoryFaint, marginTop: 4 },
   editBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.lg,
     borderWidth: 1, borderColor: colors.goldDim, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8,

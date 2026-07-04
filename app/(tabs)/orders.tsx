@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import OrderRow from '../../components/OrderRow';
+import StateMessage from '../../components/StateMessage';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
-import { orders } from '../../data/dummyData';
+import { useOrders } from '../../lib/firestore/orders';
 import { useAppTheme } from '../../hooks/use-app-theme';
 
 const FILTERS = ['All', 'Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
@@ -14,9 +15,11 @@ export default function Orders() {
   const styles = createStyles(colors);
   const [filter, setFilter] = useState('All');
 
+  const { data: orders, loading, error } = useOrders();
+
   const filtered = useMemo(
     () => (filter === 'All' ? orders : orders.filter((order) => order.status === filter)),
-    [filter]
+    [orders, filter]
   );
 
   return (
@@ -44,16 +47,29 @@ export default function Orders() {
           )}
         />
 
-        <FlatList
-          data={filtered}
-          keyExtractor={(order) => order.id}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-          renderItem={({ item }) => (
-            <OrderRow order={item} onPress={() => router.push(`/order/${item.id}`)} />
-          )}
-        />
+        {loading ? (
+          <View style={styles.empty}>
+            <ActivityIndicator color={colors.gold} />
+          </View>
+        ) : error ? (
+          <StateMessage title="Could not load orders" message={error.message} />
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(order) => order.id}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+            renderItem={({ item }) => (
+              <OrderRow order={item} onPress={() => router.push(`/order/${item.id}`)} />
+            )}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>No orders in this filter</Text>
+              </View>
+            }
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -79,4 +95,6 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   chipText: { fontFamily: fonts.bodySemi, fontSize: 12.5, color: colors.ivoryMuted },
   chipTextActive: { color: colors.bg },
   list: { paddingBottom: spacing.xxl },
+  empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl * 2 },
+  emptyText: { fontFamily: fonts.body, fontSize: 13, color: colors.ivoryFaint },
 });

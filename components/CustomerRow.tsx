@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppColors, fonts, radius, spacing } from '../constants/theme';
-import { Customer } from '../data/dummyData';
 import { useAppTheme } from '../hooks/use-app-theme';
+import { Customer } from '../lib/firestore/types';
 
 function initials(name: string) {
   return name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();

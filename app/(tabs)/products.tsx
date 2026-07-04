@@ -1,11 +1,12 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ProductCard from '../../components/ProductCard';
+import StateMessage from '../../components/StateMessage';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
-import { products } from '../../data/dummyData';
+import { useProducts } from '../../lib/firestore/products'; // <-- was: import { products } from '../../data/dummyData'
 import { useAppTheme } from '../../hooks/use-app-theme';
 
 const CATEGORIES = ['All', 'Necklace', 'Ring', 'Earrings', 'Bracelet'];
@@ -18,13 +19,17 @@ export default function Products() {
   const [category, setCategory] = useState('All');
   const columns = width >= 980 ? 4 : width >= 700 ? 3 : width < 430 ? 1 : 2;
 
+  // Firestore replaces the static `products` array. `data` is the live list,
+  // kept in sync automatically (onSnapshot) whenever Firestore changes.
+  const { data: products, loading, error } = useProducts();
+
   const filtered = useMemo(() => {
     return products.filter((product) => {
       const matchesCategory = category === 'All' || product.category === category;
       const matchesQuery = product.name.toLowerCase().includes(query.toLowerCase());
       return matchesCategory && matchesQuery;
     });
-  }, [query, category]);
+  }, [products, query, category]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -67,24 +72,32 @@ export default function Products() {
           )}
         />
 
-        <FlatList
-          key={columns}
-          data={filtered}
-          keyExtractor={(product) => product.id}
-          numColumns={columns}
-          columnWrapperStyle={columns > 1 ? styles.columnWrapper : undefined}
-          contentContainerStyle={styles.grid}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <ProductCard product={item} onPress={() => router.push(`/product/${item.id}`)} />
-          )}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Feather name="search" size={22} color={colors.ivoryFaint} />
-              <Text style={styles.emptyText}>No products match your search</Text>
-            </View>
-          }
-        />
+        {loading ? (
+          <View style={styles.empty}>
+            <ActivityIndicator color={colors.gold} />
+          </View>
+        ) : error ? (
+          <StateMessage title="Could not load products" message={error.message} />
+        ) : (
+          <FlatList
+            key={columns}
+            data={filtered}
+            keyExtractor={(product) => product.id}
+            numColumns={columns}
+            columnWrapperStyle={columns > 1 ? styles.columnWrapper : undefined}
+            contentContainerStyle={styles.grid}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <ProductCard product={item} onPress={() => router.push(`/product/${item.id}`)} />
+            )}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Feather name="search" size={22} color={colors.ivoryFaint} />
+                <Text style={styles.emptyText}>No products match your search</Text>
+              </View>
+            }
+          />
+        )}
       </View>
     </SafeAreaView>
   );

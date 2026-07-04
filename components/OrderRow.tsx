@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppColors, fonts, radius, spacing } from '../constants/theme';
-import { Order } from '../data/dummyData';
 import { useAppTheme } from '../hooks/use-app-theme';
+import { Order } from '../lib/firestore/types';
 import Badge from './Badge';
 
 export default function OrderRow({ order, onPress }: { order: Order; onPress: () => void }) {

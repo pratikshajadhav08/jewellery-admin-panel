@@ -1,11 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Badge from '../../components/Badge';
 import ScreenHeader from '../../components/ScreenHeader';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
-import { OrderStatus, orders } from '../../data/dummyData';
+import { useOrder, updateOrderStatus } from '../../lib/firestore/orders';
+import { OrderStatus } from '../../lib/firestore/types';
 import { useAppTheme } from '../../hooks/use-app-theme';
 
 const STAGES: OrderStatus[] = ['Pending', 'Processing', 'Shipped', 'Delivered'];
@@ -14,9 +16,51 @@ export default function OrderDetail() {
   const { colors } = useAppTheme();
   const styles = createStyles(colors);
   const { id } = useLocalSearchParams<{ id: string }>();
-  const order = orders.find((item) => item.id === id) ?? orders[0];
+  const { order, loading } = useOrder(id);
+  const [updating, setUpdating] = useState(false);
+
+  if (loading || !order) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={colors.gold} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const cancelled = order.status === 'Cancelled';
   const currentStageIndex = STAGES.indexOf(order.status);
+  const nextStage = STAGES[currentStageIndex + 1];
+
+  const advanceStatus = async () => {
+    if (!nextStage) return;
+    setUpdating(true);
+    try {
+      await updateOrderStatus(order.id, nextStage);
+    } catch (err) {
+      Alert.alert('Could not update order', err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const cancelOrder = () => {
+    Alert.alert('Cancel Order', `Cancel order ${order.id}?`, [
+      { text: 'Keep order', style: 'cancel' },
+      {
+        text: 'Cancel order',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await updateOrderStatus(order.id, 'Cancelled');
+          } catch (err) {
+            Alert.alert('Could not cancel', err instanceof Error ? err.message : 'Something went wrong.');
+          }
+        },
+      },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -46,6 +90,27 @@ export default function OrderDetail() {
             <View style={styles.cancelledBanner}>
               <Feather name="x-circle" size={16} color={colors.danger} />
               <Text style={styles.cancelledText}>This order was cancelled</Text>
+            </View>
+          )}
+
+          {!cancelled && (
+            <View style={styles.actionsRow}>
+              {nextStage && (
+                <Pressable style={styles.advanceBtn} onPress={advanceStatus} disabled={updating}>
+                  {updating ? (
+                    <ActivityIndicator size="small" color={colors.bg} />
+                  ) : (
+                    <>
+                      <Feather name="arrow-right-circle" size={15} color={colors.bg} />
+                      <Text style={styles.advanceText}>Mark as {nextStage}</Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
+              <Pressable style={styles.cancelBtn} onPress={cancelOrder}>
+                <Feather name="x" size={15} color={colors.danger} />
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
             </View>
           )}
 
@@ -109,6 +174,7 @@ function InfoRow({
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   inner: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center' },
   timeline: { flexDirection: 'row', marginBottom: spacing.xl, paddingHorizontal: spacing.xs },
@@ -128,6 +194,18 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     borderWidth: 1, borderColor: colors.logoutBorder, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.xl,
   },
   cancelledText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.danger },
+  actionsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
+  advanceBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: colors.gold, borderRadius: radius.md, paddingVertical: spacing.md,
+  },
+  advanceText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.bg },
+  cancelBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1, borderColor: colors.logoutBorder, backgroundColor: colors.dangerBg,
+    borderRadius: radius.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg,
+  },
+  cancelText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.danger },
   sectionTitle: { fontFamily: fonts.displaySemi, fontSize: 17, color: colors.ivory, marginBottom: spacing.sm },
   card: {
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,

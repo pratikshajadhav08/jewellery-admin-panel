@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppColors, fonts, makeShadow, radius, spacing } from '../constants/theme';
-import { Product } from '../data/dummyData';
 import { useAppTheme } from '../hooks/use-app-theme';
+import { Product } from '../lib/firestore/types';
 import Badge from './Badge';
 
 function stockLabel(stock: number) {

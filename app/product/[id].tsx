@@ -1,28 +1,80 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ScreenHeader';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
-import { products } from '../../data/dummyData';
+import { useProduct, updateProduct, deleteProduct } from '../../lib/firestore/products';
 import { useAppTheme } from '../../hooks/use-app-theme';
 
 export default function ProductDetail() {
   const { colors } = useAppTheme();
   const styles = createStyles(colors);
   const { id } = useLocalSearchParams<{ id: string }>();
-  const product = products.find((item) => item.id === id) ?? products[0];
+  const { product, loading } = useProduct(id);
 
   const [editMode, setEditMode] = useState(false);
-  const [name, setName] = useState(product.name);
-  const [price, setPrice] = useState(String(product.price));
-  const [stock, setStock] = useState(String(product.stock));
-  const [description, setDescription] = useState(product.description);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [stock, setStock] = useState('');
+  const [description, setDescription] = useState('');
 
-  const handleSave = () => {
-    setEditMode(false);
-    Alert.alert('Saved', 'Product details updated (dummy data only).');
+  // Sync local edit fields whenever the live product doc changes (and isn't
+  // mid-edit), so external updates don't get clobbered by stale state.
+  useEffect(() => {
+    if (product && !editMode) {
+      setName(product.name);
+      setPrice(String(product.price));
+      setStock(String(product.stock));
+      setDescription(product.description);
+    }
+  }, [product, editMode]);
+
+  if (loading || !product) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={colors.gold} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateProduct(product.id, {
+        name,
+        price: Number(price) || 0,
+        stock: Number(stock) || 0,
+        description,
+      });
+      setEditMode(false);
+    } catch (err) {
+      Alert.alert('Could not save', err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    Alert.alert('Delete Product', `Remove ${product.name} from catalog?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteProduct(product.id);
+            router.back();
+          } catch (err) {
+            Alert.alert('Could not delete', err instanceof Error ? err.message : 'Something went wrong.');
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -31,9 +83,15 @@ export default function ProductDetail() {
         title={editMode ? 'Edit Product' : 'Product'}
         back
         right={
-          <Pressable style={styles.editToggle} onPress={() => (editMode ? handleSave() : setEditMode(true))}>
-            <Feather name={editMode ? 'check' : 'edit-2'} size={14} color={colors.bg} />
-            <Text style={styles.editToggleText}>{editMode ? 'Save' : 'Edit'}</Text>
+          <Pressable style={styles.editToggle} onPress={() => (editMode ? handleSave() : setEditMode(true))} disabled={saving}>
+            {saving ? (
+              <ActivityIndicator size="small" color={colors.bg} />
+            ) : (
+              <>
+                <Feather name={editMode ? 'check' : 'edit-2'} size={14} color={colors.bg} />
+                <Text style={styles.editToggleText}>{editMode ? 'Save' : 'Edit'}</Text>
+              </>
+            )}
           </Pressable>
         }
       />
@@ -97,13 +155,7 @@ export default function ProductDetail() {
           )}
 
           {!editMode && (
-            <Pressable
-              style={styles.deleteBtn}
-              onPress={() => Alert.alert('Delete Product', `Remove ${name} from catalog?`, [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Delete', style: 'destructive', onPress: () => router.back() },
-              ])}
-            >
+            <Pressable style={styles.deleteBtn} onPress={handleDelete}>
               <Feather name="trash-2" size={15} color={colors.danger} />
               <Text style={styles.deleteText}>Delete Product</Text>
             </Pressable>
@@ -116,6 +168,7 @@ export default function ProductDetail() {
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   inner: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center' },
   image: { width: '100%', height: 260, borderRadius: radius.lg, backgroundColor: colors.surfaceAlt, marginBottom: spacing.lg },
@@ -151,7 +204,7 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
   editToggle: {
     flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.gold,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, minWidth: 64, justifyContent: 'center',
   },
   editToggleText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.bg },
   deleteBtn: {

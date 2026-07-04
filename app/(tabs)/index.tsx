@@ -1,19 +1,53 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import OrderRow from '../../components/OrderRow';
+import StateMessage from '../../components/StateMessage';
 import StatCard from '../../components/StatCard';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
-import { admin, dashboardStats, orders, products } from '../../data/dummyData';
+import { useProducts } from '../../lib/firestore/products';
+import { useOrders } from '../../lib/firestore/orders';
+import { useDashboardStats, useAdmin } from '../../lib/firestore/meta';
 import { useAppTheme } from '../../hooks/use-app-theme';
 
 export default function Dashboard() {
   const { colors, mode, toggleTheme } = useAppTheme();
   const { width } = useWindowDimensions();
   const styles = createStyles(colors);
-  const lowStockItems = products.filter((product) => product.stock <= 3);
   const isWide = width >= 820;
+
+  const { data: products, loading: productsLoading, error: productsError } = useProducts();
+  const { data: orders, loading: ordersLoading, error: ordersError } = useOrders();
+  const { stats: dashboardStats, loading: statsLoading, error: statsError } = useDashboardStats();
+  const { admin, loading: adminLoading, error: adminError } = useAdmin();
+
+  const loading = productsLoading || ordersLoading || statsLoading || adminLoading;
+  const error = productsError ?? ordersError ?? statsError ?? adminError;
+  const lowStockItems = products.filter((product) => product.stock <= 3);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={colors.gold} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !dashboardStats || !admin) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingWrap}>
+          <StateMessage
+            title="Firestore is not ready"
+            message={error?.message ?? 'Seed the meta/admin and meta/dashboardStats documents.'}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -48,8 +82,8 @@ export default function Dashboard() {
           <View style={[styles.statsWrap, isWide && styles.statsWrapWide]}>
             <StatCard label="Total Sales" value={`Rs. ${(dashboardStats.totalSales / 100000).toFixed(1)}L`} change={dashboardStats.salesChange} icon="trending-up" />
             <StatCard label="Orders Today" value={String(dashboardStats.ordersToday)} change={dashboardStats.ordersChange} icon="shopping-bag" />
-            <StatCard label="Total Products" value={String(dashboardStats.totalProducts)} icon="package" />
-            <StatCard label="Low Stock" value={String(dashboardStats.lowStock)} icon="alert-triangle" />
+            <StatCard label="Total Products" value={String(products.length)} icon="package" />
+            <StatCard label="Low Stock" value={String(lowStockItems.length)} icon="alert-triangle" />
           </View>
 
           {lowStockItems.length > 0 && (
@@ -94,6 +128,7 @@ export default function Dashboard() {
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   inner: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', gap: spacing.sm },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.lg },

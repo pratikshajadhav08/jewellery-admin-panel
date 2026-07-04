@@ -1,10 +1,25 @@
 import { Feather } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
+import { ActivityIndicator, View } from 'react-native';
 import { fonts } from '../../constants/theme';
 import { useAppTheme } from '../../hooks/use-app-theme';
+import { useAuthUser } from '../../lib/auth';
 
 export default function TabsLayout() {
   const { colors } = useAppTheme();
+  const { user, loading } = useAuthUser();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator color={colors.gold} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <Redirect href="/login" />;
+  }
 
   return (
     <Tabs
@@ -14,7 +29,7 @@ export default function TabsLayout() {
           backgroundColor: colors.bgElevated,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 78,
+          height: 85,
           paddingTop: 8,
           paddingBottom: 22,
         },
