@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ScreenHeader';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
@@ -20,9 +20,8 @@ export default function ProductDetail() {
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [description, setDescription] = useState('');
+  const [viewerVisible, setViewerVisible] = useState(false);
 
-  // Sync local edit fields whenever the live product doc changes (and isn't
-  // mid-edit), so external updates don't get clobbered by stale state.
   useEffect(() => {
     if (product && !editMode) {
       setName(product.name);
@@ -53,27 +52,47 @@ export default function ProductDetail() {
       });
       setEditMode(false);
     } catch (err) {
-      Alert.alert('Could not save', err instanceof Error ? err.message : 'Something went wrong.');
+      const message = err instanceof Error ? err.message : 'Something went wrong.';
+      console.error('Update product failed:', err);
+      if (Platform.OS === 'web') {
+        window.alert(`Could not save: ${message}`);
+      } else {
+        Alert.alert('Could not save', message);
+      }
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = () => {
+    const doDelete = async () => {
+      try {
+        await deleteProduct(product.id);
+        router.back();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Something went wrong.';
+        console.error('Delete product failed:', err);
+        if (Platform.OS === 'web') {
+          window.alert(`Could not delete: ${message}`);
+        } else {
+          Alert.alert('Could not delete', message);
+        }
+      }
+    };
+
+    // Alert.alert has no effect on web (react-native-web doesn't implement
+    // it), so use window.confirm there instead, and the native Alert on
+    // iOS/Android.
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Remove ${product.name} from catalog?`)) {
+        doDelete();
+      }
+      return;
+    }
+
     Alert.alert('Delete Product', `Remove ${product.name} from catalog?`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteProduct(product.id);
-            router.back();
-          } catch (err) {
-            Alert.alert('Could not delete', err instanceof Error ? err.message : 'Something went wrong.');
-          }
-        },
-      },
+      { text: 'Delete', style: 'destructive', onPress: doDelete },
     ]);
   };
 
@@ -98,7 +117,9 @@ export default function ProductDetail() {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.inner}>
-          <Image source={{ uri: product.image }} style={styles.image} />
+          <Pressable onPress={() => setViewerVisible(true)}>
+            <Image source={{ uri: product.image }} style={styles.image} />
+          </Pressable>
 
           <View style={styles.tagRow}>
             <Text style={styles.tag}>{product.category.toUpperCase()}</Text>
@@ -162,6 +183,21 @@ export default function ProductDetail() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={viewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerVisible(false)}
+      >
+        <Pressable style={styles.viewerBackdrop} onPress={() => setViewerVisible(false)}>
+          <Image source={{ uri: product.image }} style={styles.viewerImage} resizeMode="contain" />
+          <Pressable style={styles.viewerClose} onPress={() => setViewerVisible(false)} hitSlop={10}>
+            <Feather name="x" size={22} color={colors.ivory} />
+          </Pressable>
+          <Text style={styles.viewerCaption} numberOfLines={1}>{product.name}</Text>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -213,4 +249,32 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     borderRadius: radius.md, paddingVertical: spacing.md,
   },
   deleteText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.danger },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  viewerImage: { width: '100%', height: '80%' },
+  viewerClose: {
+    position: 'absolute',
+    top: 50,
+    right: 24,
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerCaption: {
+    position: 'absolute',
+    bottom: 40,
+    fontFamily: fonts.bodySemi,
+    fontSize: 13,
+    color: colors.ivory,
+  },
 });

@@ -3,6 +3,7 @@
 // screens/components need minimal changes when switching to Firestore.
 
 export type OrderStatus = 'Pending' | 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled';
+export type PaymentStatus = 'Paid' | 'Partially Paid' | 'Unpaid';
 
 export type FirestoreAuditFields = {
   createdAt?: unknown;
@@ -13,6 +14,13 @@ export type OrderItem = {
   name: string;
   qty: number;
   price: number;
+  // Optional jewellery pricing breakdown - when present, the invoice shows
+  // how `price` was derived instead of just the flat number. `price` itself
+  // remains the source of truth for order totals either way.
+  weightGrams?: number;
+  ratePerGram?: number;
+  makingChargePercent?: number;
+  wastagePercent?: number;
 };
 
 export type Product = FirestoreAuditFields & {
@@ -37,6 +45,19 @@ export type Order = FirestoreAuditFields & {
   status: OrderStatus;
   items: OrderItem[];
   total: number;
+  // Optional so existing orders (e.g. seeded before this feature existed)
+  // don't break - screens fall back to sensible defaults when reading these.
+  amountPaid?: number;
+  paymentStatus?: PaymentStatus;
+  // Old gold exchange / buyback: deducted from the gross item total to
+  // produce the actual amount payable by the customer. Payment tracking
+  // (amountPaid/paymentStatus/balance due) is based on the net payable
+  // amount, not the gross total - GST, however, is calculated on the gross
+  // sale value of the new items, unaffected by the exchange.
+  exchangeDescription?: string;
+  exchangeWeightGrams?: number;
+  exchangeRatePerGram?: number;
+  exchangeValue?: number;
 };
 
 export type Customer = FirestoreAuditFields & {

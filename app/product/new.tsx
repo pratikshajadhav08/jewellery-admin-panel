@@ -2,11 +2,11 @@ import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
 import { createProduct } from '../../lib/firestore/products';
-import { uploadImageAsync } from '../../lib/storage';
+import { uploadImageAsync } from '../../lib/uploadImage';
 import { useAppTheme } from '../../hooks/use-app-theme';
 
 const CATEGORIES = ['Necklace', 'Ring', 'Earrings', 'Bracelet'];
@@ -14,6 +14,15 @@ const MATERIALS = ['18K Gold', 'Yellow Gold', 'Rose Gold', 'White Gold', 'Platin
 
 // Used only as a last-resort fallback if no photo is picked at all.
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=400';
+
+function alertMessage(title: string, message: string) {
+  console.error(`${title}: ${message}`);
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 function makeSku(category: string) {
   const prefix = category.slice(0, 2).toUpperCase();
@@ -39,7 +48,7 @@ export default function NewProduct() {
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to add a product photo.');
+      alertMessage('Permission needed', 'Allow photo library access to add a product photo.');
       return;
     }
 
@@ -57,7 +66,7 @@ export default function NewProduct() {
 
   const handleCreate = async () => {
     if (!name || !price) {
-      Alert.alert('Missing info', 'Please add at least a name and price.');
+      alertMessage('Missing info', 'Please add at least a name and price.');
       return;
     }
     setSubmitting(true);
@@ -65,8 +74,7 @@ export default function NewProduct() {
       let imageUrl = PLACEHOLDER_IMAGE;
       if (imageUri) {
         setUploadingImage(true);
-        const fileName = `${Date.now()}-${name.trim().replace(/\s+/g, '-').toLowerCase()}.jpg`;
-        imageUrl = await uploadImageAsync(imageUri, `products/${fileName}`);
+        imageUrl = await uploadImageAsync(imageUri, 'products');
         setUploadingImage(false);
       }
 
@@ -81,11 +89,17 @@ export default function NewProduct() {
         image: imageUrl,
         description,
       });
-      Alert.alert('Product Added', `${name} has been added to your catalog.`, [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      if (Platform.OS === 'web') {
+        window.alert(`${name} has been added to your catalog.`);
+        router.back();
+      } else {
+        Alert.alert('Product Added', `${name} has been added to your catalog.`, [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
     } catch (err) {
-      Alert.alert('Could not add product', err instanceof Error ? err.message : 'Something went wrong.');
+      const message = err instanceof Error ? err.message : 'Something went wrong.';
+      alertMessage('Could not add product', message);
     } finally {
       setSubmitting(false);
       setUploadingImage(false);

@@ -12,6 +12,9 @@ function getVariants(colors: AppColors): Record<string, { fg: string; bg: string
     'In Stock': { fg: colors.success, bg: colors.successBg },
     'Low Stock': { fg: colors.warning, bg: colors.warningBg },
     'Out of Stock': { fg: colors.danger, bg: colors.dangerBg },
+    Paid: { fg: colors.success, bg: colors.successBg },
+    'Partially Paid': { fg: colors.warning, bg: colors.warningBg },
+    Unpaid: { fg: colors.danger, bg: colors.dangerBg },
   };
 }
 

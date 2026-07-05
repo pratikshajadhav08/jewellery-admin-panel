@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -30,7 +31,12 @@ export default function Orders() {
             <Text style={styles.title}>Orders</Text>
             <Text style={styles.subtitle}>Track fulfilment and payments</Text>
           </View>
-          <Text style={styles.count}>{filtered.length} orders</Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.count}>{filtered.length} orders</Text>
+            <Pressable style={styles.addBtn} onPress={() => router.push('/order/new')}>
+              <Feather name="plus" size={20} color={colors.bg} />
+            </Pressable>
+          </View>
         </View>
 
         <FlatList
@@ -84,7 +90,12 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
   title: { fontFamily: fonts.display, fontSize: 28, color: colors.ivory },
   subtitle: { fontFamily: fonts.body, fontSize: 12.5, color: colors.ivoryMuted, marginTop: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   count: { fontFamily: fonts.body, fontSize: 12.5, color: colors.ivoryMuted },
+  addBtn: {
+    width: 42, height: 42, borderRadius: radius.sm, backgroundColor: colors.gold,
+    alignItems: 'center', justifyContent: 'center',
+  },
   chipsList: { flexGrow: 0, flexShrink: 0 },
   chipsRow: { gap: spacing.sm, paddingVertical: spacing.md, alignItems: 'flex-start' },
   chip: {

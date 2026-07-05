@@ -3,13 +3,14 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import ProductCard from '../../components/ProductCard';
+import ProductCard, { stockLabel } from '../../components/ProductCard';
 import StateMessage from '../../components/StateMessage';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
 import { useProducts } from '../../lib/firestore/products'; // <-- was: import { products } from '../../data/dummyData'
 import { useAppTheme } from '../../hooks/use-app-theme';
 
 const CATEGORIES = ['All', 'Necklace', 'Ring', 'Earrings', 'Bracelet'];
+const STOCK_FILTERS = ['All Stock', 'In Stock', 'Low Stock', 'Out of Stock'];
 
 export default function Products() {
   const { colors } = useAppTheme();
@@ -17,6 +18,7 @@ export default function Products() {
   const styles = createStyles(colors);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
+  const [stockFilter, setStockFilter] = useState('All Stock');
   const columns = width >= 980 ? 4 : width >= 700 ? 3 : width < 430 ? 1 : 2;
 
   // Firestore replaces the static `products` array. `data` is the live list,
@@ -27,9 +29,10 @@ export default function Products() {
     return products.filter((product) => {
       const matchesCategory = category === 'All' || product.category === category;
       const matchesQuery = product.name.toLowerCase().includes(query.toLowerCase());
-      return matchesCategory && matchesQuery;
+      const matchesStock = stockFilter === 'All Stock' || stockLabel(product.stock) === stockFilter;
+      return matchesCategory && matchesQuery && matchesStock;
     });
-  }, [products, query, category]);
+  }, [products, query, category, stockFilter]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -72,6 +75,23 @@ export default function Products() {
           )}
         />
 
+        <FlatList
+          horizontal
+          style={styles.chipsList}
+          data={STOCK_FILTERS}
+          keyExtractor={(filterName) => filterName}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.stockChipsRow}
+          renderItem={({ item }) => (
+            <Pressable
+              style={[styles.stockChip, stockFilter === item && styles.stockChipActive]}
+              onPress={() => setStockFilter(item)}
+            >
+              <Text style={[styles.stockChipText, stockFilter === item && styles.stockChipTextActive]}>{item}</Text>
+            </Pressable>
+          )}
+        />
+
         {loading ? (
           <View style={styles.empty}>
             <ActivityIndicator color={colors.gold} />
@@ -93,7 +113,7 @@ export default function Products() {
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Feather name="search" size={22} color={colors.ivoryFaint} />
-                <Text style={styles.emptyText}>No products match your search</Text>
+                <Text style={styles.emptyText}>No products match your filters</Text>
               </View>
             }
           />
@@ -123,7 +143,7 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 13.5, color: colors.ivory },
   chipsList: { flexGrow: 0, flexShrink: 0 },
-  chipsRow: { gap: spacing.sm, paddingVertical: spacing.md, alignItems: 'flex-start' },
+  chipsRow: { gap: spacing.sm, paddingTop: spacing.md, alignItems: 'flex-start' },
   chip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
@@ -131,6 +151,14 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   chipActive: { backgroundColor: colors.gold, borderColor: colors.gold },
   chipText: { fontFamily: fonts.bodySemi, fontSize: 12.5, color: colors.ivoryMuted },
   chipTextActive: { color: colors.bg },
+  stockChipsRow: { gap: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.md, alignItems: 'flex-start' },
+  stockChip: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border,
+  },
+  stockChipActive: { backgroundColor: colors.goldDim, borderColor: colors.gold },
+  stockChipText: { fontFamily: fonts.bodySemi, fontSize: 11.5, color: colors.ivoryMuted },
+  stockChipTextActive: { color: colors.ivory },
   grid: { paddingBottom: spacing.xxl, gap: spacing.md },
   columnWrapper: { gap: spacing.md },
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl * 2, gap: spacing.sm },
