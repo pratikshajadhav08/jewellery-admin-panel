@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppColors, fonts, layout, radius, spacing } from '../../constants/theme';
 import { createOrder, computePaymentStatus, computeNetPayable } from '../../lib/firestore/orders';
-import { syncCustomerFromOrder } from '../../lib/firestore/customers';
+import { syncCustomerFromOrder, useCustomers, findCustomerByName } from '../../lib/firestore/customers';
 import { useProducts } from '../../lib/firestore/products';
 import { OrderItem } from '../../lib/firestore/types';
 import { useAppTheme } from '../../hooks/use-app-theme';
@@ -42,9 +42,12 @@ export default function NewOrder() {
   const { colors } = useAppTheme();
   const styles = createStyles(colors);
   const { data: products } = useProducts();
+  const { data: customers } = useCustomers();
 
   const [customer, setCustomer] = useState('');
   const [address, setAddress] = useState('');
+  const [addressAutoFilled, setAddressAutoFilled] = useState(false);
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const [payment, setPayment] = useState(PAYMENT_METHODS[0]);
   const [amountPaid, setAmountPaid] = useState('');
   const [showExchange, setShowExchange] = useState(false);
@@ -78,6 +81,22 @@ export default function NewOrder() {
   }, [customWeight, customRate, customMaking, customWastage]);
 
   const total = useMemo(() => items.reduce((sum, item) => sum + item.price * item.qty, 0), [items]);
+
+  const customerSuggestions = useMemo(() => {
+    const query = customer.trim().toLowerCase();
+    if (!query) return [];
+    return customers.filter((c) => c.name.toLowerCase().includes(query)).slice(0, 6);
+  }, [customers, customer]);
+
+  const selectCustomer = (name: string) => {
+    setCustomer(name);
+    setShowCustomerSuggestions(false);
+    const matched = findCustomerByName(customers, name);
+    if (matched?.address) {
+      setAddress(matched.address);
+      setAddressAutoFilled(true);
+    }
+  };
 
   const exchangeSuggestedValue = useMemo(() => {
     const weight = Number(exchangeWeight);
@@ -189,7 +208,7 @@ export default function NewOrder() {
       });
 
       try {
-        await syncCustomerFromOrder(customer.trim(), total);
+        await syncCustomerFromOrder(customer.trim(), total, address.trim() || undefined);
       } catch (syncErr) {
         // Don't block or alarm the user over this - the order itself was
         // created successfully. Just log it for debugging.
@@ -226,22 +245,46 @@ export default function NewOrder() {
           <Field label="Customer Name" styles={styles}>
             <TextInput
               value={customer}
-              onChangeText={setCustomer}
+              onChangeText={(text) => {
+                setCustomer(text);
+                setShowCustomerSuggestions(true);
+                setAddressAutoFilled(false);
+              }}
+              onFocus={() => setShowCustomerSuggestions(true)}
               placeholder="e.g. Meera Kulkarni"
               placeholderTextColor={colors.ivoryFaint}
               style={styles.input}
             />
+            {showCustomerSuggestions && customerSuggestions.length > 0 && (
+              <View style={styles.suggestionsBox}>
+                {customerSuggestions.map((c) => (
+                  <Pressable key={c.id} style={styles.suggestionRow} onPress={() => selectCustomer(c.name)}>
+                    <Feather name="user" size={13} color={colors.ivoryFaint} />
+                    <View style={styles.suggestionInfo}>
+                      <Text style={styles.suggestionName}>{c.name}</Text>
+                      <Text style={styles.suggestionMeta}>{c.orders} previous orders</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </Field>
 
           <Field label="Delivery Address" styles={styles}>
             <TextInput
               value={address}
-              onChangeText={setAddress}
+              onChangeText={(text) => {
+                setAddress(text);
+                setAddressAutoFilled(false);
+              }}
               placeholder="Street, city, PIN code"
               placeholderTextColor={colors.ivoryFaint}
               multiline
               style={[styles.input, styles.textarea]}
             />
+            {addressAutoFilled && (
+              <Text style={styles.autofilledHint}>Auto-filled from this customer's saved address</Text>
+            )}
           </Field>
 
           <Field label="Payment Method" styles={styles}>
@@ -471,9 +514,11 @@ export default function NewOrder() {
 
           {Number(amountPaid) > 0 && (
             <View style={styles.balanceRow}>
-              <Text style={styles.balanceLabel}>Balance Due</Text>
-              <Text style={styles.balanceValue}>
-                Rs. {Math.max(netPayable - Number(amountPaid), 0).toLocaleString('en-IN')}
+              <Text style={styles.balanceLabel}>
+                {Number(amountPaid) > netPayable ? 'Change to Return' : 'Balance Due'}
+              </Text>
+              <Text style={[styles.balanceValue, Number(amountPaid) > netPayable && styles.changeValue]}>
+                Rs. {Math.abs(netPayable - Number(amountPaid)).toLocaleString('en-IN')}
               </Text>
             </View>
           )}
@@ -559,7 +604,19 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   title: { fontFamily: fonts.display, fontSize: 22, color: colors.ivory },
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   inner: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', gap: spacing.lg },
-  field: { gap: 6 },
+  field: { gap: 6, position: 'relative', zIndex: 1 },
+  suggestionsBox: {
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, marginTop: 4, overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  suggestionInfo: { flex: 1 },
+  suggestionName: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.ivory },
+  suggestionMeta: { fontFamily: fonts.body, fontSize: 10.5, color: colors.ivoryFaint, marginTop: 1 },
+  autofilledHint: { fontFamily: fonts.body, fontSize: 10.5, color: colors.gold, marginTop: 4 },
   fieldLabel: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.ivoryMuted },
   input: {
     fontFamily: fonts.body, fontSize: 14, color: colors.ivory, backgroundColor: colors.surface,
@@ -631,6 +688,7 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   },
   balanceLabel: { fontFamily: fonts.body, fontSize: 12.5, color: colors.ivoryFaint },
   balanceValue: { fontFamily: fonts.bodySemi, fontSize: 13.5, color: colors.warning },
+  changeValue: { color: colors.success },
   submit: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: colors.gold, height: 52, borderRadius: radius.md,

@@ -17,21 +17,49 @@ const SHOP = {
 // Verify this matches your specific goods with your accountant/CA.
 const HSN_CODE = '7113';
 
-// GST on gold/silver jewellery is currently 3% total (1.5% CGST + 1.5%
-// SGST for intra-state sales). This assumes `order.total` is GST-inclusive
-// (the price the customer actually pays), which is standard for retail
-// pricing, and backs out the tax split from it. If your making charges are
-// taxed at a different rate, or you make inter-state sales (IGST instead
-// of CGST+SGST), adjust this calculation accordingly - confirm with your
+// GST on jewellery in India is NOT a single flat rate: gold/silver value
+// (including wastage, since it's effectively more metal) is taxed at 3%,
+// but making/labour charges are taxed at 5% - a different rate. This
+// assumes each item's stored `price` is GST-inclusive (standard retail
+// pricing), and backs out the tax split per item using its weight/making
+// breakdown when available. Items without that breakdown (e.g. repairs,
+// custom items with just a flat price) fall back to a flat 3% treatment,
+// since there's no way to know their gold/making split.
+// Confirm these rates and the inter-state (IGST) case with your
 // accountant before relying on this for compliance.
-const GST_RATE = 0.03;
+const GOLD_GST_RATE = 0.03;
+const MAKING_GST_RATE = 0.05;
 
-function computeGstBreakdown(totalInclusive: number) {
-  const taxableValue = totalInclusive / (1 + GST_RATE);
-  const totalTax = totalInclusive - taxableValue;
-  const cgst = totalTax / 2;
-  const sgst = totalTax / 2;
-  return { taxableValue, cgst, sgst };
+function computeGstBreakdownFromItems(items: Order['items']) {
+  let taxableValue = 0;
+  let totalTax = 0;
+
+  for (const item of items) {
+    const lineTotal = item.price * item.qty;
+
+    if (item.weightGrams && item.ratePerGram) {
+      const metalValuePerUnit = item.weightGrams * item.ratePerGram;
+      const makingPerUnit = metalValuePerUnit * ((item.makingChargePercent ?? 0) / 100);
+      const wastagePerUnit = metalValuePerUnit * ((item.wastagePercent ?? 0) / 100);
+      const rawPerUnit = metalValuePerUnit + makingPerUnit + wastagePerUnit;
+      const makingRatio = rawPerUnit > 0 ? makingPerUnit / rawPerUnit : 0;
+
+      const makingPortion = lineTotal * makingRatio;
+      const goldPortion = lineTotal - makingPortion;
+
+      const goldBase = goldPortion / (1 + GOLD_GST_RATE);
+      const makingBase = makingPortion / (1 + MAKING_GST_RATE);
+
+      taxableValue += goldBase + makingBase;
+      totalTax += goldPortion - goldBase + (makingPortion - makingBase);
+    } else {
+      const base = lineTotal / (1 + GOLD_GST_RATE);
+      taxableValue += base;
+      totalTax += lineTotal - base;
+    }
+  }
+
+  return { taxableValue, cgst: totalTax / 2, sgst: totalTax / 2 };
 }
 
 function escapeHtml(value: string) {
@@ -74,7 +102,7 @@ function buildInvoiceHtml(order: Order): string {
     })
     .join('');
 
-  const { taxableValue, cgst, sgst } = computeGstBreakdown(order.total);
+  const { taxableValue, cgst, sgst } = computeGstBreakdownFromItems(order.items);
   const netPayable = Math.max(order.total - (order.exchangeValue ?? 0), 0);
 
   return `
@@ -189,11 +217,11 @@ function buildInvoiceHtml(order: Order): string {
               <span>Rs. ${taxableValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
             </div>
             <div class="totals-row">
-              <span>CGST @ 1.5%</span>
+              <span>CGST (1.5% gold / 2.5% making)</span>
               <span>Rs. ${cgst.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
             </div>
             <div class="totals-row">
-              <span>SGST @ 1.5%</span>
+              <span>SGST (1.5% gold / 2.5% making)</span>
               <span>Rs. ${sgst.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
             </div>
             <div class="totals-row grand">

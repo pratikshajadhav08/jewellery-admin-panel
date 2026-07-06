@@ -58,6 +58,13 @@ export type Order = FirestoreAuditFields & {
   exchangeWeightGrams?: number;
   exchangeRatePerGram?: number;
   exchangeValue?: number;
+  // GST added on top of the item total at creation time (metal value taxed
+  // at 3%, making/wastage charges taxed at 5% - see computeOrderGst).
+  // Payment tracking is based on grandTotal (total + gstAmount), not the
+  // raw pre-tax total. Optional so orders created before this existed still
+  // work (they fall back to treating total as the full amount owed).
+  gstAmount?: number;
+  grandTotal?: number;
 };
 
 export type Customer = FirestoreAuditFields & {
@@ -69,6 +76,7 @@ export type Customer = FirestoreAuditFields & {
   joined: string;
   totalSpent: number;
   vip: boolean;
+  address?: string;
 };
 
 export type DashboardStats = {

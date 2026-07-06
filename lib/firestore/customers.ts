@@ -6,11 +6,9 @@ import {
   getDocs,
   onSnapshot,
   orderBy,
-  query,
   serverTimestamp,
   setDoc,
   updateDoc,
-  where,
 } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { useFirestoreCollection } from '../../hooks/useFirestoreCollection';
@@ -108,25 +106,28 @@ function currentJoinedLabel() {
  * automatically shows up in the Customers tab without a separate manual
  * step.
  *
- * Matching is by exact (trimmed) name, since the order form only captures
- * a name - no customer id. If two different real people share an identical
- * name, they'll be treated as the same customer record; edit manually in
- * the Customers tab if that ever happens.
+ * Matching is case-insensitive on the trimmed name (e.g. "pratiksha" and
+ * "Pratiksha" are treated as the same person) - Firestore has no built-in
+ * case-insensitive query, so this fetches all customers and compares in
+ * JS. Fine for a shop-sized customer list; if that list ever grows very
+ * large, switch to a stored lowercase-name field with an indexed query.
  */
-export async function syncCustomerFromOrder(customerName: string, orderTotal: number) {
+export async function syncCustomerFromOrder(customerName: string, orderTotal: number, address?: string) {
   const trimmedName = customerName.trim();
   if (!trimmedName) return;
 
-  const snapshot = await getDocs(
-    query(collection(requireDb(), COLLECTION), where('name', '==', trimmedName))
-  );
+  const targetLower = trimmedName.toLowerCase();
+  const snapshot = await getDocs(collection(requireDb(), COLLECTION));
+  const existingDoc = snapshot.docs.find((d) => (d.data().name as string)?.trim().toLowerCase() === targetLower);
 
-  if (!snapshot.empty) {
-    const existingDoc = snapshot.docs[0];
+  if (existingDoc) {
     const existing = existingDoc.data() as CustomerWrite;
     await updateDoc(doc(requireDb(), COLLECTION, existingDoc.id), {
       orders: (existing.orders ?? 0) + 1,
       totalSpent: (existing.totalSpent ?? 0) + orderTotal,
+      // Don't clobber an already-saved address with a possibly one-off
+      // delivery address from this particular order.
+      ...(!existing.address && address ? { address } : {}),
       updatedAt: serverTimestamp(),
     });
     return;
@@ -140,7 +141,18 @@ export async function syncCustomerFromOrder(customerName: string, orderTotal: nu
     totalSpent: orderTotal,
     joined: currentJoinedLabel(),
     vip: false,
+    ...(address ? { address } : {}),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+}
+
+/**
+ * Finds a customer by exact case-insensitive name match, for the New Order
+ * screen's "existing customer" autocomplete/autofill.
+ */
+export function findCustomerByName(customers: Customer[], name: string): Customer | undefined {
+  const target = name.trim().toLowerCase();
+  if (!target) return undefined;
+  return customers.find((c) => c.name.trim().toLowerCase() === target);
 }

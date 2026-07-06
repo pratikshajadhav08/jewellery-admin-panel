@@ -84,6 +84,7 @@ export default function OrderDetail() {
   const amountPaid = order.amountPaid ?? 0;
   const netPayable = computeNetPayable(order.total, order.exchangeValue);
   const balanceDue = Math.max(netPayable - amountPaid, 0);
+  const changeDue = Math.max(amountPaid - netPayable, 0);
   const paymentStatus = order.paymentStatus ?? (amountPaid <= 0 ? 'Unpaid' : amountPaid >= netPayable ? 'Paid' : 'Partially Paid');
 
   const openPaymentModal = () => {
@@ -222,9 +223,15 @@ export default function OrderDetail() {
               <Text style={styles.paymentValue}>Rs. {amountPaid.toLocaleString('en-IN')}</Text>
             </View>
             <View style={styles.paymentRow}>
-              <Text style={styles.infoLabel}>Balance Due</Text>
-              <Text style={[styles.paymentValue, balanceDue > 0 && styles.paymentValueDue]}>
-                Rs. {balanceDue.toLocaleString('en-IN')}
+              <Text style={styles.infoLabel}>{changeDue > 0 ? 'Change to Return' : 'Balance Due'}</Text>
+              <Text
+                style={[
+                  styles.paymentValue,
+                  balanceDue > 0 && styles.paymentValueDue,
+                  changeDue > 0 && styles.paymentValueChange,
+                ]}
+              >
+                Rs. {(changeDue > 0 ? changeDue : balanceDue).toLocaleString('en-IN')}
               </Text>
             </View>
             {balanceDue > 0 && !cancelled && (
@@ -411,6 +418,7 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
   paymentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md },
   paymentValue: { fontFamily: fonts.bodySemi, fontSize: 13.5, color: colors.ivory },
   paymentValueDue: { color: colors.warning },
+  paymentValueChange: { color: colors.success },
   recordPaymentBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.border,
