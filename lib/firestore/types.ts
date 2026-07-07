@@ -14,6 +14,11 @@ export type OrderItem = {
   name: string;
   qty: number;
   price: number;
+  // Links this line item back to the catalog product it came from, so
+  // order creation can decrement that product's stock. Optional because
+  // custom/one-off items (e.g. repairs, bespoke pieces typed in directly)
+  // don't correspond to any catalog product and simply skip stock tracking.
+  productId?: string;
   // Optional jewellery pricing breakdown - when present, the invoice shows
   // how `price` was derived instead of just the flat number. `price` itself
   // remains the source of truth for order totals either way.

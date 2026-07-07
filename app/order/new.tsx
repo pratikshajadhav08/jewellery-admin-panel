@@ -45,6 +45,7 @@ export default function NewOrder() {
   const { data: customers } = useCustomers();
 
   const [customer, setCustomer] = useState('');
+  const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [addressAutoFilled, setAddressAutoFilled] = useState(false);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
@@ -96,6 +97,9 @@ export default function NewOrder() {
       setAddress(matched.address);
       setAddressAutoFilled(true);
     }
+    if (matched?.phone) {
+      setPhone(matched.phone);
+    }
   };
 
   const exchangeSuggestedValue = useMemo(() => {
@@ -113,15 +117,18 @@ export default function NewOrder() {
     [products, catalogQuery]
   );
 
-  const addFromCatalog = (name: string, price: number) => {
+  const addFromCatalog = (productId: string, name: string, price: number) => {
     setItems((current) => {
-      const existingIndex = current.findIndex((item) => item.name === name);
+      // Merge by productId rather than name - two products could share a
+      // display name, and matching on the real ID is what lets stock get
+      // decremented against the right catalog item on submit.
+      const existingIndex = current.findIndex((item) => item.productId === productId);
       if (existingIndex !== -1) {
         const next = [...current];
         next[existingIndex] = { ...next[existingIndex], qty: next[existingIndex].qty + 1 };
         return next;
       }
-      return [...current, { name, qty: 1, price }];
+      return [...current, { productId, name, qty: 1, price }];
     });
     setCatalogVisible(false);
     setCatalogQuery('');
@@ -144,11 +151,11 @@ export default function NewOrder() {
         price: Number(customPrice) || 0,
         ...(hasBreakdown
           ? {
-              weightGrams: weight,
-              ratePerGram: rate,
-              makingChargePercent: Number(customMaking) || 0,
-              wastagePercent: Number(customWastage) || 0,
-            }
+            weightGrams: weight,
+            ratePerGram: rate,
+            makingChargePercent: Number(customMaking) || 0,
+            wastagePercent: Number(customWastage) || 0,
+          }
           : {}),
       },
     ]);
@@ -187,11 +194,11 @@ export default function NewOrder() {
       const exchangeFields =
         showExchange && exchangeValue > 0
           ? {
-              exchangeDescription: exchangeDescription.trim() || 'Old gold exchange',
-              exchangeValue,
-              ...(weightNum > 0 ? { exchangeWeightGrams: weightNum } : {}),
-              ...(rateNum > 0 ? { exchangeRatePerGram: rateNum } : {}),
-            }
+            exchangeDescription: exchangeDescription.trim() || 'Old gold exchange',
+            exchangeValue,
+            ...(weightNum > 0 ? { exchangeWeightGrams: weightNum } : {}),
+            ...(rateNum > 0 ? { exchangeRatePerGram: rateNum } : {}),
+          }
           : {};
 
       const id = await createOrder({
@@ -208,7 +215,7 @@ export default function NewOrder() {
       });
 
       try {
-        await syncCustomerFromOrder(customer.trim(), total, address.trim() || undefined);
+        await syncCustomerFromOrder(customer.trim(), total, address.trim() || undefined, phone.trim() || undefined);
       } catch (syncErr) {
         // Don't block or alarm the user over this - the order itself was
         // created successfully. Just log it for debugging.
@@ -268,6 +275,17 @@ export default function NewOrder() {
                 ))}
               </View>
             )}
+          </Field>
+
+          <Field label="Customer Phone (optional)" styles={styles}>
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="+91 90000 00000"
+              placeholderTextColor={colors.ivoryFaint}
+              keyboardType="phone-pad"
+              style={styles.input}
+            />
           </Field>
 
           <Field label="Delivery Address" styles={styles}>
@@ -559,7 +577,7 @@ export default function NewOrder() {
             keyExtractor={(product) => product.id}
             contentContainerStyle={styles.catalogList}
             renderItem={({ item }) => (
-              <Pressable style={styles.catalogRow} onPress={() => addFromCatalog(item.name, item.price)}>
+              <Pressable style={styles.catalogRow} onPress={() => addFromCatalog(item.id, item.name, item.price)}>
                 <View style={styles.catalogRowInfo}>
                   <Text style={styles.catalogRowName}>{item.name}</Text>
                   <Text style={styles.catalogRowMeta}>{item.category} / {item.stock} in stock</Text>
